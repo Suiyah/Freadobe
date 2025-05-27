@@ -372,16 +372,7 @@ class RearrangePDFApp:
         Button(control_frame, text="🔽 Move Down", command=self.move_down).grid(row=0, column=1, padx=5)
         Button(control_frame, text="🗑 Delete", command=self.delete_selected_page).grid(row=0, column=2, padx=5)
         Button(control_frame, text="📤 Extract Page", command=self.extract_selected_page).grid(row=0, column=3, padx=5)
-        self.insert_label = Button(control_frame, text="📥 Insert Page", command=self.insert_page)
-        self.insert_label.grid(row=0, column=4, padx=5)
-        self.insert_label.drop_target_register(DND_FILES)
-        self.insert_label.dnd_bind('<<Drop>>', self.on_insert_drop)
-
-
-
-        Button(self.window, text="💾 Save", font=("Arial", 12),
-               command=self.save_pdf, bg="#4CAF50", fg="white", padx=10, pady=5).pack(pady=10)
-
+        Button(self.window, text="💾 Save PDF", command=self.save_rearranged_pdf, bg="#4CAF50", fg="white").pack(pady=10)
         Button(self.window, text="Back", command=self.window.destroy).pack()
 
     def on_drop(self, event):
@@ -461,73 +452,49 @@ class RearrangePDFApp:
             messagebox.showinfo("Success", f"Page extracted and saved to:\n{out_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to extract page:\n{str(e)}")
-
-
-
-    def on_insert_drop(self, event):
-        if not self.original_file_path:
-            messagebox.showwarning("No PDF Loaded", "Please load a PDF file first.")
-            return
-
-        selected = self.page_listbox.curselection()
-        insert_index = selected[0] + 1 if selected else len(self.pages)
-
-        raw = event.data
-        files = re.findall(r'{.*?}|[^\s]+', raw)
-        inserted_pages = []
-
-        for file in files:
-            file = file.strip('{}')
-            ext = os.path.splitext(file)[1].lower()
-
-            if ext == '.pdf':
-                try:
-                    reader = PdfReader(file)
-                    for page in reader.pages:
-                        inserted_pages.append(page)
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to read PDF:\n{str(e)}")
-
-            elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']:
-                try:
-                    img = Image.open(file)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-
-                    temp_path = os.path.join(os.getcwd(), "_temp_insert.pdf")
-                    img.save(temp_path, "PDF")
-                    reader = PdfReader(temp_path)
-                    inserted_pages.append(reader.pages[0])
-                    os.remove(temp_path)
-
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to insert image:\n{str(e)}")
-            else:
-                messagebox.showwarning("Unsupported Format", f"Unsupported file: {file}")
-
-        if inserted_pages:
-            for i, page in enumerate(inserted_pages):
-                self.pages.insert(insert_index + i, page)
-
-            self.refresh_listbox(selected_index=insert_index + len(inserted_pages) - 1)
-
-
-
-
-
-
-
-
-    def save_pdf(self):
+            
+    def save_rearranged_pdf(self):
         if not self.pages:
             messagebox.showwarning("Empty PDF", "There are no pages to save.")
             return
-
+            
+        if not self.original_file_path:
+            # If no original file (shouldn't happen as we need to load one first)
+            self.save_as_new_pdf()
+            return
+            
+        # Ask user what they want to do
+        choice = messagebox.askquestion(
+            "Save Options",
+            "How would you like to save the PDF?",
+            detail="Click 'Yes' to overwrite the original file\n'No' to save as a new file",
+            icon='question'
+        )
+        
+        if choice == 'yes':
+            self.overwrite_original()
+        else:
+            self.save_as_new_pdf()
+    
+    def overwrite_original(self):
+        try:
+            writer = PdfWriter()
+            for page in self.pages:
+                writer.add_page(page)
+            with open(self.original_file_path, "wb") as f:
+                writer.write(f)
+            messagebox.showinfo("Success", f"PDF successfully overwritten at:\n{self.original_file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to overwrite file:\n{str(e)}")
+    
+    def save_as_new_pdf(self):
         folder = filedialog.askdirectory(title="Select folder to save rearranged PDF")
         if not folder:
             return
 
-        name = simpledialog.askstring("PDF Name", "Enter name for rearranged PDF (without .pdf):")
+        default_name = os.path.splitext(os.path.basename(self.original_file_path))[0] + "_rearranged"
+        name = simpledialog.askstring("PDF Name", "Enter name for rearranged PDF (without .pdf):", 
+                                     initialvalue=default_name)
         if not name:
             return
 
@@ -541,12 +508,6 @@ class RearrangePDFApp:
             messagebox.showinfo("Success", f"Rearranged PDF saved to:\n{out_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save PDF:\n{str(e)}")
-
-
-
-
-
-
 
 # --- Entry Point ---
 if __name__ == "__main__":
